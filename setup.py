@@ -33,7 +33,7 @@ def find_scripts(*dirs: str) -> list[str]:
 
 # ------------------------------------------------------------------------------
 # Import README.md and use it as the long-description. Must be in MANIFEST.in
-with open('README.md') as fp:
+with open('PYPI.md') as fp:
     long_description = '\n' + fp.read()
 
 # ------------------------------------------------------------------------------
@@ -52,6 +52,7 @@ setup(
     author='Murray Andrews',
     description='Open LLM Experimental Workbench',
     long_description=long_description,
+    long_description_content_type='text/markdown',
     platforms=['macOS', 'Linux'],
     python_requires=REQUIRES_PYTHON,
     install_requires=required,

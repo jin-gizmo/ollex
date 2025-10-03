@@ -8,17 +8,19 @@
 > 
 > Kudos to Origin for fostering a culture that empowers its people
 > to build complex technology solutions in-house.
+> 
+> See more tools at [Jin Gizmo on GitHub](https://jin-gizmo.github.io).
 
 ## Overview
 
 **Ollex** is a little desktop experiment built to get a bit of hands-on
-experience fiddling with this AI boondoggle. It's a very basic, naive
-implementation but I knew nothing at the time. The uncharitable amongst you will
-suggest that situation hasn't changed. So it goes.
+experience fiddling with this AI caper. It's a very basic, naive implementation
+but I knew nothing at the time. The uncharitable amongst you will suggest that
+situation hasn't changed. So it goes.
 
-Anyhow, my use case was simple ...
+Anyhow, the use case was simple ...
 
-> Given a small to medium sized source document, load it up so I can ask
+> Given a reasonable sized source document, load it up so we can ask
 > questions about its contents. 
 
 Turned out to be more fiddly than expected. The final result was a couple of
@@ -202,6 +204,10 @@ options:
 
 ## Release Notes
 
+#### v1.0.1
+
+*   Minor packaging changes for PyPI.
+
 #### v1.0.0
 
-* Open source base release
+*   Open source base release.
