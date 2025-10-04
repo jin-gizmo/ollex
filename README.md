@@ -1,7 +1,5 @@
 # Ollex (Open LLM Experimental Workbench)
 
-> [!NOTE]
-> 
 > **Ollex** was developed at [Origin Energy](https://www.originenergy.com.au) as part of the
 > *Jindabyne* initiative. While not part of our core IP, it proved valuable
 > internally, and we're sharing it in the hope it's useful to others.
@@ -10,6 +8,10 @@
 > to build complex technology solutions in-house.
 > 
 > See more tools at [Jin Gizmo on GitHub](https://jin-gizmo.github.io).
+
+<div align="center">
+<img src="./doc/img/ollex.png" alt="Dockreg Logo" width="120px" height="auto">
+</div>
 
 ## Overview
 
