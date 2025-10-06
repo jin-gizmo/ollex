@@ -1,41 +1,47 @@
 # Ollex (Open LLM Experimental Workbench)
 
-> **Ollex** was developed at [Origin Energy](https://www.originenergy.com.au) as part of the
-> *Jindabyne* initiative. While not part of our core IP, it proved valuable
-> internally, and we're sharing it in the hope it's useful to others.
-> 
-> Kudos to Origin for fostering a culture that empowers its people
-> to build complex technology solutions in-house.
-> 
-> See more tools at [Jin Gizmo on GitHub](https://jin-gizmo.github.io).
-
 <div align="center">
-<img src="./doc/img/ollex.png" alt="Dockreg Logo" width="120px" height="auto">
+<img src="./doc/img/ollex.png" alt="Ollex Logo" width="120px" height="auto">
 </div>
-
-## Overview
 
 **Ollex** is a little desktop experiment built to get a bit of hands-on
 experience fiddling with this AI caper. It's a very basic, naive implementation
 but I knew nothing at the time. The uncharitable amongst you will suggest that
 situation hasn't changed. So it goes.
 
-Anyhow, the use case was simple ...
+[![PyPI version](https://img.shields.io/pypi/v/ollex)](https://pypi.org/project/ollex/)
+[![Python versions](https://img.shields.io/pypi/pyversions/ollex)](https://pypi.org/project/ollex/)
+[![GitHub Licence](https://img.shields.io/github/license/jin-gizmo/ollex)](https://github.com/jin-gizmo/ollex/blob/master/LICENCE.txt)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+## Genesis
+
+**Ollex** was developed at [Origin Energy](https://www.originenergy.com.au)
+as part of the *Jindabyne* initiative. While not part of our core IP, it proved
+valuable internally, and we're sharing it in the hope it's useful to others.
+
+Kudos to Origin for fostering a culture that empowers its people to build
+complex technology solutions in-house.
+
+[![Jin Gizmo Home](https://img.shields.io/badge/Jin_Gizmo_Home-d30000?logo=GitHub&color=d30000)](https://jin-gizmo.github.io)
+
+## Premise
+
+The use case was simple ...
 
 > Given a reasonable sized source document, load it up so we can ask
 > questions about its contents. 
 
-Turned out to be more fiddly than expected. The final result was a couple of
-simple CLI tools:
+Turned out to be more fiddly than expected. The final result was a simple CLI tool with a couple of subcommands:
 
-*   **olx-db**:  This creates / extends a ChromaDB vector database with
+*   **[olx db](#olx-db)**:  Create / extend a ChromaDB vector database with
     embeddings from one or more Markdown formatted documents.
 
-*   **olx-query**: A simple tool to run queries using one or more LLM models against
-    a ChromaDB database that has been created using **olx-db**. This can be run,
+*   **[olx query](#olx-query)**: Run queries using one or more LLM models against
+    a ChromaDB database that has been created using **olx db**. This can be run,
     either in batch mode, or as an iterative REPL.
 
-The intent behind the **olx-query** tool is this ... given:
+The intent behind the **olx query** tool is this ... given:
 
 *   `n` different embeddings of a given source document
 *   `m` LLM models
@@ -66,17 +72,18 @@ source venv/bin/activate
 pip install ollex
 
 # Quick check
-olx-db --help
-olx-query --help
+olx --help
+olx db --help
+olx query --help
 ```
 
 To take it for a spin, first create a DB with a markdown formatted source
 document.
 
 ```bash
-# Create a DB with a sample document
+# Create a DB with a markdown document
 # Default embedding model is nomic-embed-text 
-bin/olx-db --collection sample sample.db sample-source-doc.md
+olx db --collection sample sample.db sample-source-doc.md
 ```
 
 You can add multiple collections to the database with different embedding models,
@@ -84,7 +91,7 @@ parameters and/or source content. For example, let's add a new collection using
 the same source document but with a different chunk size:
 
 ```bash
-bin/olx-db --collection sample-500 --param chunk_size=500 sample.db \
+olx db --collection sample-500 --param chunk_size=500 sample.db \
     sample-source-doc.md
 ```
 
@@ -94,15 +101,15 @@ commands to do things such as change LLMs, data collections and system prompts
 being used.
 
 ```bash
-bin/olx-query --llm llama3.2 --collection sample sample.db
+olx query --llm llama3.2 --collection sample sample.db
 ```
 
 ## Usage
 
-### olx-db
+### olx db
 
 ```bare
-usage: olx-db [-h] [-c COLLECTION] [-p NAME=VALUE] [-v]
+usage: olx db [-h] [-c COLLECTION] [-p NAME=VALUE] [-v]
               db_directory FILE.md [FILE.md ...]
 
 Load Markdown documents into a Chroma vector DB.
@@ -126,10 +133,10 @@ options:
   -v, --version         Show version and exit.
 ```
 
-### olx-query
+### olx query
 
-**Olx-query** has a batch mode and an interactive REPL (read, evaluate and print
-loop) mode. If stdin and stdout are connected to a tty, **olx-query** uses the
+**Olx query** has a batch mode and an interactive REPL (read, evaluate and print
+loop) mode. If stdin and stdout are connected to a tty, **olx query** uses the
 REPL. 
 
 In batch mode, queries are read from stdin. Each query can span multiple lines,
@@ -139,7 +146,7 @@ configuration details that lead to the response. The intent was to produce a
 format that could be used to rate responses.
 
 ```bare
-usage: olx-query [-h] [-c COLLECTION] [-l MODEL] [-e EMBEDDING]
+usage: olx query [-h] [-c COLLECTION] [-l MODEL] [-e EMBEDDING]
                  [-o NAME=VALUE] [-p FILE.yaml] [-n COUNT] [-r COUNT] [-v]
                  db_directory
 
@@ -192,7 +199,7 @@ options:
   -v, --version         Show version and exit.
 ```
 
-## Salient Points
+## Editorial
 
 1.  Langchain is a mixed blessing. It's byzantine and documentation could be better.
 
@@ -206,7 +213,11 @@ options:
 
 ## Release Notes
 
-#### v1.0.1
+#### v2.0.1
+
+*   Updated CLI install process.
+
+*   Updated for ChromaDB API changes.
 
 *   Minor packaging changes for PyPI.
 

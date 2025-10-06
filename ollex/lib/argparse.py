@@ -42,8 +42,8 @@ class StoreNameValuePair(Action):
         for val in values:
             try:
                 n, v = val.split('=', 1)
-            except ValueError as e:
-                raise ArgumentError(self, str(e))
+            except ValueError:
+                raise ArgumentError(self, f'Expected "key=value", got "{val}"')
             argdict[n] = v
 
 

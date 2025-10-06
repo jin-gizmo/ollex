@@ -2,33 +2,34 @@
 
 from __future__ import annotations
 
-from itertools import chain
+from importlib import resources
 from pathlib import Path
 
 from setuptools import find_packages, setup
 
-__version__ = (Path(__file__).parent / 'ollex' / 'VERSION').read_text().strip()
+__version__ = (resources.files('ollex') / 'VERSION').read_text().strip()
 
 REPO_URL = 'https://github.com/jin-gizmo/ollex'
 REQUIRES_PYTHON = '>=3.11.0'
 
 
 # ------------------------------------------------------------------------------
-def looks_like_script(path: Path) -> bool:
-    """Check if a file looks like a script."""
+def find_cli_entry_points(*cli_pkg: str, entry_point: str = 'main') -> list[str]:
+    """Find CLI entry point scripts in the specified CLI packages."""
 
-    if not (path.is_file() and (stat := path.stat()).st_size > 2 and stat.st_mode & 0o100):
-        return False
-
-    with open(path) as fp:
-        return fp.read(2) == '#!'
-
-
-# ------------------------------------------------------------------------------
-def find_scripts(*dirs: str) -> list[str]:
-    """Find all executable scripts in the specified directory."""
-
-    return [str(f) for f in chain(*(Path(d).glob('*') for d in dirs)) if looks_like_script(f)]
+    entry_points = []
+    for pkg in cli_pkg:
+        pkg_path = Path(pkg.replace('.', '/'))
+        if not pkg_path.is_dir():
+            continue
+        entry_points.extend(
+            [
+                f'{f.stem.replace("_", "-")}={pkg}.{f.stem}:{entry_point}'
+                for f in pkg_path.glob('*.py')
+                if not f.name.startswith('_')
+            ]
+        )
+    return entry_points
 
 
 # ------------------------------------------------------------------------------
@@ -42,12 +43,15 @@ with open('requirements.txt') as fp:
     required = [s.strip() for s in fp.readlines()]
 
 # ------------------------------------------------------------------------------
+packages = find_packages(exclude=['tests', '*.tests', '*.tests.*', 'tests.*'])
 setup(
     name='ollex',
     version=__version__,
-    packages=find_packages(exclude=['tests', '*.tests', '*.tests.*', 'tests.*']),
+    packages=packages,
+    entry_points={
+        'console_scripts': find_cli_entry_points(*(p for p in packages if p.endswith('.cli')))
+    },
     url=REPO_URL,
-    scripts=find_scripts('bin'),
     license='3-Clause BSD License',
     author='Murray Andrews',
     description='Open LLM Experimental Workbench',

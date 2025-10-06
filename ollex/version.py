@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from importlib import resources
 
-__version__ = (Path(__file__).parent / 'VERSION').read_text().strip()
+__version__ = (resources.files('ollex') / 'VERSION').read_text().strip()

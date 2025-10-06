@@ -85,9 +85,7 @@ class ReplCommand(ABC):
         self.repl_context = repl_context
         self.console = console
         self.cmd_escape = cmd_escape
-        self.argp = ReplArgparser(
-            add_help=False, error_fmt=f'Error: {{}} ({cmd_escape}/h for help)'
-        )
+        self.argp = ReplArgparser(add_help=False, error_fmt=f'Error: {{}} ({cmd_escape}h for help)')
         self.add_arguments()
 
     # --------------------------------------------------------------------------

@@ -1,16 +1,13 @@
-#!/usr/bin/env python3
-
-"""Interact with Ollama in REPL or batch mode."""
-
-from __future__ import annotations
+"""Ollex "query" command."""
 
 import json
 import readline  # noqa
 import sys
-from argparse import ArgumentParser, Namespace
+from argparse import Namespace
 from collections.abc import Iterator
 from contextlib import suppress
 from functools import lru_cache
+from importlib import resources
 from itertools import product
 from os import isatty
 from pathlib import Path
@@ -27,16 +24,12 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.status import Status
 
-import ollex  # Need this to get resources dir
+from ollex.commands import CliCommand
+from ollex.exceptions import OllexError
 from ollex.lib.argparse import StoreNameValuePair
 from ollex.lib.misc import plural
 from ollex.lib.model import LLM_OPTIONS
 from ollex.repl import ReplCommandController
-from ollex.version import __version__
-
-__author__ = 'Murray Andrews'
-
-PROG = Path(sys.argv[0]).stem
 
 EMBEDDING_MODEL = 'nomic-embed-text'  # Last resort only
 MIN_QUERY_LENGTH = 10  # Applies to repl only
@@ -55,154 +48,182 @@ Style = Namespace(
     error='red',
 )
 
-LLM_PROMPT = """
-    You are an expert in analysing software documentation.
-
-    Answer the question based on the following data. If you don't know, just say
-    so. Don't make things up. Do not speculate on why the question is being
-    asked. Also provide a numeric confidence score for your answer out of 10 as
-    a separate final paragraph. Do not provide a qualitative score.
-
-    Data: {data}
-
-    Question: {question}
-    """
-
-LLM_PROMPT_FILE = Path(ollex.__file__).parent / 'resources' / 'prompts.yaml'
+LLM_PROMPT_FILE = resources.files('ollex') / 'resources' / 'prompts.yaml'
 
 BANNERS = [
     line
-    for line in (Path(ollex.__file__).parent / 'resources' / 'banners.txt').read_text().splitlines()
+    for line in (resources.files('ollex') / 'resources' / 'banners.txt').read_text().splitlines()
     if line.strip() and not line.startswith('#')
 ]
 
 
 # ------------------------------------------------------------------------------
-def process_cli_args() -> Namespace:
-    """Process command line arguments."""
+@CliCommand.register('query')
+class Query(CliCommand):
+    """Interact with Ollama in REPL or batch mode."""
 
-    argp = ArgumentParser(prog=PROG, description=__doc__.splitlines()[0].strip())
+    # --------------------------------------------------------------------------
+    def add_arguments(self) -> None:
+        """Add arguments to the command handler."""
 
-    argp.add_argument(
-        'db_directory',
-        help='Directory containing the Chroma DB containing embeddings.',
-    )
+        self.argp.add_argument(
+            'db_directory',
+            help='Directory containing the Chroma DB containing embeddings.',
+        )
 
-    argp.add_argument(
-        '-c',
-        '--collection',
-        action='append',
-        default=[],
-        help=(
-            'Database collection to use. Multiple collections can be active at'
-            ' the same time by repeating this option. A response is provided for'
-            ' each active collection. If not specified and the database has'
-            ' only one collection, that will be used. In interactive mode, the'
-            ' collection(s) can also be specified using an interactive command.'
-            ' A collection must be specified for any queries to be run.'
-        ),
-    )
-    argp.add_argument(
-        '-l',
-        '--llm',
-        metavar='MODEL',
-        default=[],
-        action='append',
-        help=(
-            'Model to be used for the LLM. Multiple models can be active at the'
-            ' same time by repeating this option. A response is provided for'
-            ' each active model. At least one model must be specified, either'
-            f' as a command argument or via the {REPL_CMD_ESCAPE}llm'
-            ' interactive command in order to process any queries.'
-        ),
-    )
+        self.argp.add_argument(
+            '-c',
+            '--collection',
+            action='append',
+            default=[],
+            help=(
+                'Database collection to use. Multiple collections can be active at'
+                ' the same time by repeating this option. A response is provided for'
+                ' each active collection. If not specified and the database has'
+                ' only one collection, that will be used. In interactive mode, the'
+                ' collection(s) can also be specified using an interactive command.'
+                ' A collection must be specified for any queries to be run.'
+            ),
+        )
+        self.argp.add_argument(
+            '-l',
+            '--llm',
+            metavar='MODEL',
+            default=[],
+            action='append',
+            help=(
+                'Model to be used for the LLM. Multiple models can be active at the'
+                ' same time by repeating this option. A response is provided for'
+                ' each active model. At least one model must be specified, either'
+                f' as a command argument or via the {REPL_CMD_ESCAPE}llm'
+                ' interactive command in order to process any queries.'
+            ),
+        )
 
-    argp.add_argument(
-        '-e',
-        '--embedding',
-        default=EMBEDDING_MODEL,
-        help=(
-            'The embedding used when creating storing documents in the database.'
-            ' This is determined (in order or precedence) by'
-            ' (1) the value stored in config.yaml in the database directory;'
-            ' (2) the value of this argument;'
-            f' (3) the default ({EMBEDDING_MODEL}).'
-        ),
-    )
+        self.argp.add_argument(
+            '-e',
+            '--embedding',
+            default=EMBEDDING_MODEL,
+            help=(
+                'The embedding used when creating storing documents in the database.'
+                ' This is determined (in order or precedence) by'
+                ' (1) the value stored in config.yaml in the database directory;'
+                ' (2) the value of this argument;'
+                f' (3) the default ({EMBEDDING_MODEL}).'
+            ),
+        )
 
-    argp.add_argument(
-        '-o',
-        '--option',
-        metavar='NAME=VALUE',
-        dest='llm_options',
-        action=StoreNameValuePair,
-        default={},
-        help=(
-            'Set the specified LLM control option(s). Available options are:'
-            f' {", ".join(sorted(LLM_OPTIONS.keys()))}.'
-        ),
-    )
+        self.argp.add_argument(
+            '-o',
+            '--option',
+            metavar='NAME=VALUE',
+            dest='llm_options',
+            action=StoreNameValuePair,
+            default={},
+            help=(
+                'Set the specified LLM control option(s). Available options are:'
+                f' {", ".join(sorted(LLM_OPTIONS.keys()))}.'
+            ),
+        )
 
-    argp.add_argument(
-        '-p',
-        '--prompts',
-        metavar='FILE.yaml',
-        dest='prompts_file',
-        default=str(LLM_PROMPT_FILE),
-        help=(
-            'Read prompts from the specified YAML file. Keys are the prompt IDs'
-            ' and values are the prompt text. Each prompt must contain "{data}"'
-            ' and "{question}" somewhere. If not specified, a default prompt is'
-            f' used. Use the {REPL_CMD_ESCAPE}prompt interactive command to see'
-            f' its content.'
-        ),
-    )
+        self.argp.add_argument(
+            '-p',
+            '--prompts',
+            metavar='FILE.yaml',
+            dest='prompts_file',
+            default=str(LLM_PROMPT_FILE),
+            help=(
+                'Read prompts from the specified YAML file. Keys are the prompt IDs'
+                ' and values are the prompt text. Each prompt must contain "{data}"'
+                ' and "{question}" somewhere. If not specified, a default prompt is'
+                f' used. Use the {REPL_CMD_ESCAPE}prompt interactive command to see'
+                f' its content.'
+            ),
+        )
 
-    argp.add_argument(
-        '-n',
-        type=int,
-        metavar='COUNT',
-        default=1,
-        help='(Batch mode only) Run each query the specified number of times. Default 1.',
-    )
+        self.argp.add_argument(
+            '-n',
+            type=int,
+            metavar='COUNT',
+            default=1,
+            help='(Batch mode only) Run each query the specified number of times. Default 1.',
+        )
 
-    argp.add_argument(
-        '-r',
-        '--search-results',
-        action='store',
-        type=int,
-        metavar='COUNT',
-        default=N_SEARCH_RESULTS,
-        help=(
-            'Number of documents to return when searching the database.'
-            f' Default is {N_SEARCH_RESULTS}.'
-        ),
-    )
+        self.argp.add_argument(
+            '-r',
+            '--search-results',
+            action='store',
+            type=int,
+            metavar='COUNT',
+            default=N_SEARCH_RESULTS,
+            help=(
+                'Number of documents to return when searching the database.'
+                f' Default is {N_SEARCH_RESULTS}.'
+            ),
+        )
 
-    argp.add_argument(
-        '-v', '--version', action='version', version=__version__, help='Show version and exit.'
-    )
+    # --------------------------------------------------------------------------
+    @staticmethod  # noqa B027
+    def check_arguments(args: Namespace) -> None:
+        """Validate arguments."""
 
-    args = argp.parse_args()
-    if args.llm_options:
-        options = {}
-        for k, v in args.llm_options.items():
+        if args.llm_options:
+            options = {}
+            for k, v in args.llm_options.items():
+                try:
+                    options[k] = LLM_OPTIONS[k](v)
+                except KeyError:
+                    raise ValueError(f'Unknown LLM option: {k}')
+                except (TypeError, ValueError) as e:
+                    raise ValueError(f'Option {k}: {e}')
+            args.llm_options = options
+
+        # Validate that we have the LLMs requested
+        available_llms = {m.model.removesuffix(':latest') for m in ollama.list().models}
+        requested_llms = {m.removesuffix(':latest') for m in args.llm}
+        if unavailable_llms := requested_llms - available_llms:
+            raise ValueError(f'Unavailable models: {", ".join(sorted(unavailable_llms))}')
+        args.llm = sorted(requested_llms)
+
+    # --------------------------------------------------------------------------
+    @staticmethod
+    def execute(args: Namespace) -> int:
+        """Execute the command."""
+
+        # Open vector DB
+        db_dirpath = Path(args.db_directory)
+        if not db_dirpath.is_dir():
+            raise FileNotFoundError(f'{args.db_directory} doesn\'t exist or is not a directory.')
+        db_client = chromadb.PersistentClient(path=args.db_directory)
+
+        # Load config file stored in root of DB folder. This is not a chroma construct.
+        # It was added by our utility that populates the database.
+        try:
+            config = yaml.safe_load((db_dirpath / 'config.yaml').read_text())
+        except FileNotFoundError:
+            config = {}
+
+        # Validate collections requested on command line.
+        requested_collections = set(args.collection)
+        available_collections = {c.name for c in db_client.list_collections()}
+        if unavailable_collections := requested_collections - available_collections:
+            raise OllexError(
+                f'Unavailable collections: {", ".join(sorted(unavailable_collections))}'
+            )
+
+        if isatty(sys.stdin.fileno()) and isatty(sys.stdout.fileno()):
             try:
-                options[k] = LLM_OPTIONS[k](v)
-            except KeyError:
-                argp.error(f'Unknown LLM option: {k}')
-            except (TypeError, ValueError) as e:
-                argp.error(f'Option {k}: {e}')
-        args.llm_options = options
+                with suppress(FileNotFoundError):
+                    readline.read_history_file(HISTORY_FILE)
+                repl(config, db_client, args)
+            finally:
+                with suppress(Exception):
+                    readline.set_history_length(HISTORY_LENGTH)
+                    readline.write_history_file(HISTORY_FILE)
+        else:
+            batch_loop(config, db_client, args)
 
-    # Validate that we have the LLMs requested
-    available_llms = {m.model.removesuffix(':latest') for m in ollama.list().models}
-    requested_llms = {m.removesuffix(':latest') for m in args.llm}
-    if unavailable_llms := requested_llms - available_llms:
-        argp.error(f'Unavailable models: {", ".join(sorted(unavailable_llms))}')
-    args.llm = sorted(requested_llms)
-
-    return args
+        return 0
 
 
 # ------------------------------------------------------------------------------
@@ -255,7 +276,7 @@ def refresh_yaml_dict(filename: str) -> dict[str, Any]:
     # Content doesn't exist or is out of date
     content = yaml.safe_load(path.read_text())
     if not isinstance(content, dict):
-        raise Exception('Must be dict')
+        raise ValueError('Must be dict')
     refresh_yaml_dict.cache[filename] = (path.stat().st_mtime, content)  # noqa
     return content
 
@@ -276,9 +297,10 @@ def get_collection_info(
 
     db_collections = db_client.list_collections()
     if not db_collections:
-        raise Exception('No collections found in database')
+        raise OllexError('No collections found in database')
 
-    return {c: config.get('collections', {}).get(c, {}) for c in db_collections}
+    available_collections = {c.name for c in db_client.list_collections()}
+    return {c: config.get('collections', {}).get(c, {}) for c in available_collections}
 
 
 # ------------------------------------------------------------------------------
@@ -441,7 +463,7 @@ def batch_loop(config: dict[str, Any], db_client: chromadb.ClientAPI, cli_args: 
     """
 
     if not cli_args.llm:
-        raise Exception('LLM(s) must be specified in batch mode')
+        raise OllexError('LLM(s) must be specified in batch mode')
 
     collection_names = cli_args.collection
     if not collection_names:
@@ -449,7 +471,7 @@ def batch_loop(config: dict[str, Any], db_client: chromadb.ClientAPI, cli_args: 
         if len(db_collections) == 1:
             collection_names = db_collections
         else:
-            raise Exception(
+            raise OllexError(
                 'Collection must be specified in batch mode'
                 ' if DB contains more than one collection'
             )
@@ -496,56 +518,3 @@ def batch_loop(config: dict[str, Any], db_client: chromadb.ClientAPI, cli_args: 
                         }
                     )
                 )
-
-
-# ------------------------------------------------------------------------------
-def main() -> int:
-    """Show time."""
-
-    args = process_cli_args()
-
-    # Open vector DB
-    db_dirpath = Path(args.db_directory)
-    if not db_dirpath.is_dir():
-        raise FileNotFoundError(f'{args.db_directory} doesn\'t exist or is not a directory.')
-    db_client = chromadb.PersistentClient(path=args.db_directory)
-
-    # Load config file stored in root of DB folder. This is not a chroma construct.
-    # It was added by our utility that populates the database.
-    try:
-        config = yaml.safe_load((db_dirpath / 'config.yaml').read_text())
-    except FileNotFoundError:
-        config = {}
-
-    # Validate collections requested on command line.
-    requested_collections = set(args.collection)
-    available_collections = set(db_client.list_collections())
-    if unavailable_collections := requested_collections - available_collections:
-        raise Exception(f'Unavailable collections: {", ".join(sorted(unavailable_collections))}')
-
-    loop_controller = (
-        repl if isatty(sys.stdin.fileno()) and isatty(sys.stdout.fileno()) else batch_loop
-    )
-
-    loop_controller(config, db_client, args)
-    return 0
-
-
-# ------------------------------------------------------------------------------
-if __name__ == '__main__':
-    # Uncomment for debugging
-    # exit(main())  # noqa: ERA001
-    try:
-        with suppress(FileNotFoundError):
-            readline.read_history_file(HISTORY_FILE)
-        exit(main())
-    except Exception as ex:
-        print(f'{PROG}: {ex}', file=sys.stderr)
-        exit(1)
-    except KeyboardInterrupt:
-        print('Interrupt', file=sys.stderr)
-        exit(2)
-    finally:
-        with suppress(Exception):
-            readline.set_history_length(HISTORY_LENGTH)
-            readline.write_history_file(HISTORY_FILE)
